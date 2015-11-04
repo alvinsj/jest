@@ -133,7 +133,7 @@ function _promiseRawConfig(argv, packageRoot) {
 
   // Look to see if there is a package.json file with a jest config in it
   if (pkgJson.jest) {
-    if (!pkgJson.jest.hasOwnProperty('rootDir')) {
+    if ((argv._ && argv._.length > 0) || !pkgJson.jest.hasOwnProperty('rootDir')) {
       pkgJson.jest.rootDir = packageRoot;
     } else {
       pkgJson.jest.rootDir = path.resolve(packageRoot, pkgJson.jest.rootDir);
