@@ -24,13 +24,13 @@ const DEFAULT_CONFIG_VALUES = {
   coverageCollector: require.resolve('../IstanbulCollector'),
   coverageReporters: ['json', 'text', 'lcov', 'clover'],
   globals: {},
-  moduleFileExtensions: ['js', 'json'],
+  moduleFileExtensions: ['js', 'json', 'node'],
   moduleLoader: require.resolve('../HasteModuleLoader/HasteModuleLoader'),
   preprocessorIgnorePatterns: [],
   modulePathIgnorePatterns: [],
   moduleNameMapper: [],
   testDirectoryName: '__tests__',
-  testEnvironment: require.resolve('../JSDomEnvironment'),
+  testEnvironment: require.resolve('../environments/JSDOMEnvironment'),
   testEnvData: {},
   testFileExtensions: ['js'],
   testPathDirs: ['<rootDir>'],
@@ -238,6 +238,9 @@ function normalizeConfig(config) {
           );
         });
         break;
+      case 'testEnvironment_EXPERIMENTAL':
+        newConfig.testEnvironment = config[key];
+        return newConfig;
       case 'bail':
       case 'preprocessCachingDisabled':
       case 'coverageReporters':
