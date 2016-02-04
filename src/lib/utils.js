@@ -7,7 +7,7 @@
  */
 'use strict';
 
-const colors = require('./colors');
+const chalk = require('chalk');
 const fs = require('graceful-fs');
 const path = require('path');
 
@@ -35,8 +35,8 @@ const DEFAULT_CONFIG_VALUES = {
   testFileExtensions: ['js'],
   testPathDirs: ['<rootDir>'],
   testPathIgnorePatterns: [replacePathSepForRegex('/node_modules/')],
-  testReporter: require.resolve('../IstanbulTestReporter'),
-  testRunner: require.resolve('../jasmineTestRunner/jasmineTestRunner'),
+  testReporter: require.resolve('../reporters/IstanbulTestReporter'),
+  testRunner: require.resolve('../testRunners/jasmine/jasmine1'),
   testURL: 'about:blank',
   noHighlight: false,
   noStackTrace: false,
@@ -44,11 +44,6 @@ const DEFAULT_CONFIG_VALUES = {
   verbose: false,
   useStderr: false,
 };
-
-// This shows up in the stack trace when a test file throws an unhandled error
-// when evaluated. Node's require prints Object.<anonymous> when initializing
-// modules, so do the same here solely for visual consistency.
-const EVAL_RESULT_VARIABLE = 'Object.<anonymous>';
 
 function _replaceRootDirTags(rootDir, config) {
   switch (typeof config) {
@@ -91,86 +86,6 @@ function escapeStrForRegex(str) {
   return str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 }
 
-
-/**
- * Given the coverage info for a single file (as output by
- * CoverageCollector.js), return an array whose entries are bools indicating
- * whether anything on the line could have been covered and was, or null if the
- * line wasn't measurable (like empty lines, declaration keywords, etc).
- *
- * For example, for the following coverage info:
- *
- * COVERED:     var a = [];
- * NO CODE:
- * COVERED:     for (var i = 0; i < a.length; i++)
- * NOT COVERED:   console.log('hai!');
- *
- * You'd get an array that looks like this:
- *
- * [true, null, true, false]
- */
-function getLineCoverageFromCoverageInfo(coverageInfo) {
-  const coveredLines = {};
-  coverageInfo.coveredSpans.forEach(function(coveredSpan) {
-    const startLine = coveredSpan.start.line;
-    const endLine = coveredSpan.end.line;
-    for (let i = startLine - 1; i < endLine; i++) {
-      coveredLines[i] = true;
-    }
-  });
-
-  const uncoveredLines = {};
-  coverageInfo.uncoveredSpans.forEach(function(uncoveredSpan) {
-    const startLine = uncoveredSpan.start.line;
-    const endLine = uncoveredSpan.end.line;
-    for (let i = startLine - 1; i < endLine; i++) {
-      uncoveredLines[i] = true;
-    }
-  });
-
-  const sourceLines = coverageInfo.sourceText.trim().split('\n');
-
-  return sourceLines.map(function(line, lineIndex) {
-    if (uncoveredLines[lineIndex] === true) {
-      return false;
-    } else if (coveredLines[lineIndex] === true) {
-      return true;
-    } else {
-      return null;
-    }
-  });
-}
-
-/**
- * Given the coverage info for a single file (as output by
- * CoverageCollector.js), return the decimal percentage of lines in the file
- * that had any coverage info.
- *
- * For example, for the following coverage info:
- *
- * COVERED:     var a = [];
- * NO CODE:
- * COVERED:     for (var i = 0; i < a.length; i++)
- * NOT COVERED:   console.log('hai');
- *
- * You'd get: 2/3 = 0.666666
- */
-function getLinePercentCoverageFromCoverageInfo(coverageInfo) {
-  const lineCoverage = getLineCoverageFromCoverageInfo(coverageInfo);
-  let numMeasuredLines = 0;
-  const numCoveredLines = lineCoverage.reduce(function(counter, lineIsCovered) {
-    if (lineIsCovered !== null) {
-      numMeasuredLines++;
-      if (lineIsCovered === true) {
-        counter++;
-      }
-    }
-    return counter;
-  }, 0);
-
-  return numCoveredLines / numMeasuredLines;
-}
-
 function normalizeConfig(config) {
   const newConfig = {};
 
@@ -206,6 +121,7 @@ function normalizeConfig(config) {
         break;
 
       case 'cacheDirectory':
+      case 'testRunner':
       case 'scriptPreprocessor':
       case 'setupEnvScriptFile':
       case 'setupTestFrameworkScriptFile':
@@ -259,7 +175,6 @@ function normalizeConfig(config) {
       case 'testFileExtensions':
       case 'testPathPattern':
       case 'testReporter':
-      case 'testRunner':
       case 'testURL':
       case 'moduleFileExtensions':
       case 'noHighlight':
@@ -367,40 +282,6 @@ function loadConfigFromPackageJson(filePath) {
   });
 }
 
-function runContentWithLocalBindings(environment, scriptContent, scriptPath,
-                                     bindings) {
-  const boundIdents = Object.keys(bindings);
-  try {
-    const wrapperScript = 'this["' + EVAL_RESULT_VARIABLE + '"] = ' +
-      'function (' + boundIdents.join(',') + ') {' +
-      scriptContent +
-      '\n};';
-    environment.runSourceText(
-      wrapperScript,
-      scriptPath
-    );
-  } catch (e) {
-    e.message = scriptPath + ': ' + e.message;
-    throw e;
-  }
-
-  const wrapperFunc = environment.global[EVAL_RESULT_VARIABLE];
-  delete environment.global[EVAL_RESULT_VARIABLE];
-
-  const bindingValues = boundIdents.map(function(ident) {
-    return bindings[ident];
-  });
-
-  try {
-    // Node modules are executed with the `exports` as context.
-    // If not a node module then this should be undefined.
-    wrapperFunc.apply(bindings.exports, bindingValues);
-  } catch (e) {
-    e.message = scriptPath + ': ' + e.message;
-    throw e;
-  }
-}
-
 /**
  * Given a test result, return a human readable string representing the
  * failures.
@@ -415,15 +296,15 @@ function formatFailureMessage(testResult, config) {
   const rootPath = config.rootPath;
   const useColor = config.useColor;
 
-  const colorize = useColor ? colors.colorize : function(str) { return str; };
+  const localChalk = new chalk.constructor({enabled: !!useColor});
   const ancestrySeparator = ' \u203A ';
-  const descBullet = colorize('\u25cf ', colors.BOLD);
+  const descBullet = localChalk.bold('\u25cf ');
   const msgBullet = '  - ';
   const msgIndent = msgBullet.replace(/./g, ' ');
 
   if (testResult.testExecError) {
     const text = testResult.testExecError;
-    return descBullet + colorize('Runtime Error', colors.BOLD) + '\n' + text;
+    return descBullet + localChalk.bold('Runtime Error') + '\n' + text;
   }
 
   return testResult.testResults.filter(function(result) {
@@ -457,20 +338,12 @@ function formatFailureMessage(testResult, config) {
     }).join('\n');
 
     const testTitleAncestry = result.ancestorTitles.map(function(title) {
-      return colorize(title, colors.BOLD);
+      return localChalk.bold(title);
     }).join(ancestrySeparator) + ancestrySeparator;
 
     return descBullet + testTitleAncestry + result.title + '\n' +
       failureMessages;
   }).join('\n');
-}
-
-function formatMsg(msg, color, _config) {
-  _config = _config || {};
-  if (_config.noHighlight) {
-    return msg;
-  }
-  return colors.colorize(msg, color);
 }
 
 function deepCopy(obj) {
@@ -496,12 +369,7 @@ const STACK_TRACE_LINE_IGNORE_RE = new RegExp([
 
 exports.deepCopy = deepCopy;
 exports.escapeStrForRegex = escapeStrForRegex;
-exports.formatMsg = formatMsg;
-exports.getLineCoverageFromCoverageInfo = getLineCoverageFromCoverageInfo;
-exports.getLinePercentCoverageFromCoverageInfo =
-  getLinePercentCoverageFromCoverageInfo;
 exports.loadConfigFromFile = loadConfigFromFile;
 exports.loadConfigFromPackageJson = loadConfigFromPackageJson;
 exports.normalizeConfig = normalizeConfig;
-exports.runContentWithLocalBindings = runContentWithLocalBindings;
 exports.formatFailureMessage = formatFailureMessage;

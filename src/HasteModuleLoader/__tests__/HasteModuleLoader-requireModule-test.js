@@ -67,7 +67,7 @@ describe('HasteModuleLoader', function() {
       return buildLoader().then(function(loader) {
         expect(function() {
           loader.requireModule(null, 'DoesntExist');
-        }).toThrow('Cannot find module \'DoesntExist\' from \'.\'');
+        }).toThrow(new Error('Cannot find module \'DoesntExist\' from \'.\''));
       });
     });
 
@@ -95,9 +95,9 @@ describe('HasteModuleLoader', function() {
       return buildLoader().then(function(loader) {
         expect(function() {
           loader.requireModule(__filename, './DoesntExist');
-        }).toThrow(
+        }).toThrow(new Error(
           'Cannot find module \'./DoesntExist\' from \'' + __filename + '\''
-        );
+        ));
       });
     });
 
@@ -179,59 +179,12 @@ describe('HasteModuleLoader', function() {
           'marked with .dontMock()',
           function() {
             return buildLoader().then(function(loader) {
-              loader.getJestRuntime(__filename).dontMock('ManuallyMocked');
+              loader.__getJestRuntimeForTest(__filename)
+                .dontMock('ManuallyMocked');
               var exports = loader.requireModule(__filename, 'ManuallyMocked');
               expect(exports.isManualMockModule).toBe(false);
             });
           }
-      );
-
-      /**
-       * This test is only in this section because it seems sketchy to be able
-       * to load up a module without pulling it from the registry. I need to do
-       * more investigation to understand the reasoning behind this before I
-       * declare it unnecessary and condemn it.
-       */
-      pit(
-        'doesnt read from the module registry when bypassModuleRegistry is set',
-        function() {
-          return buildLoader().then(function(loader) {
-            var registryExports = loader.requireModule(
-              __filename,
-              'RegularModule'
-            );
-            registryExports.setModuleStateValue('registry');
-
-            var bypassedExports = loader.requireModule(
-              __filename,
-              'RegularModule',
-              true
-            );
-            expect(bypassedExports.getModuleStateValue()).not.toBe('registry');
-          });
-        }
-      );
-
-      pit(
-        'doesnt write to the module registry when bypassModuleRegistry is set',
-        function() {
-          return buildLoader().then(function(loader) {
-            var registryExports = loader.requireModule(
-              __filename,
-              'RegularModule'
-            );
-            registryExports.setModuleStateValue('registry');
-
-            var bypassedExports = loader.requireModule(
-              __filename,
-              'RegularModule',
-              true
-            );
-            bypassedExports.setModuleStateValue('bypassed');
-
-            expect(registryExports.getModuleStateValue()).toBe('registry');
-          });
-        }
       );
     });
   });

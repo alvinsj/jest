@@ -6,7 +6,7 @@
  * of patent rights can be found in the PATENTS file in the same directory.
  */
 
- /* eslint-disable fb-www/require-args */
+/* eslint-disable fb-www/require-args */
 'use strict';
 
 const fs = require('graceful-fs');
@@ -18,9 +18,7 @@ const os = require('os');
 const path = require('path');
 const resolve = require('resolve');
 const transform = require('../lib/transform');
-const utils = require('../lib/utils');
 
-const COVERAGE_STORAGE_VAR_NAME = '____JEST_COVERAGE_DATA____';
 const NODE_PATH =
   (process.env.NODE_PATH ? process.env.NODE_PATH.split(path.delimiter) : null);
 const IS_PATH_BASED_MODULE_NAME = /^(?:\.\.?\/|\/)/;
@@ -168,52 +166,54 @@ class Loader {
    * objects.
    */
   _execModule(moduleObj) {
-    const modulePath = moduleObj.__filename;
-    let moduleContent = transform(modulePath, this._config);
+    // If the environment was disposed, prevent this module from
+    // being executed.
+    if (!this._environment.global) {
+      return;
+    }
 
-    // Every module, if loaded for jest, should have a parent
-    // so they don't think they are run standalone
-    moduleObj.parent = mockParentModule;
-    moduleObj.require = this.constructBoundRequire(modulePath);
-
-    const moduleLocalBindings = {
-      module: moduleObj,
-      exports: moduleObj.exports,
-      require: moduleObj.require,
-      __dirname: path.dirname(modulePath),
-      __filename: modulePath,
-      global: this._environment.global,
-      jest: this._createRuntimeFor(modulePath),
-    };
-
+    const filename = moduleObj.__filename;
+    let moduleContent = transform(filename, this._config);
+    let collectorStore;
     const onlyCollectFrom = this._config.collectCoverageOnlyFrom;
     const shouldCollectCoverage =
-      this._config.collectCoverage === true && !onlyCollectFrom
-      || (onlyCollectFrom && onlyCollectFrom[modulePath] === true);
+      (this._config.collectCoverage === true && !onlyCollectFrom) ||
+      (onlyCollectFrom && onlyCollectFrom[filename] === true);
 
     if (shouldCollectCoverage) {
-      if (!hasOwnProperty.call(this._coverageCollectors, modulePath)) {
-        this._coverageCollectors[modulePath] =
-          new this._CoverageCollector(moduleContent, modulePath);
+      if (!hasOwnProperty.call(this._coverageCollectors, filename)) {
+        this._coverageCollectors[filename] =
+          new this._CoverageCollector(moduleContent, filename);
       }
-      const collector = this._coverageCollectors[modulePath];
-      moduleLocalBindings[COVERAGE_STORAGE_VAR_NAME] =
-        collector.getCoverageDataStore();
+      const collector = this._coverageCollectors[filename];
+      collectorStore = collector.getCoverageDataStore();
       moduleContent =
-        collector.getInstrumentedSource(COVERAGE_STORAGE_VAR_NAME);
+        collector.getInstrumentedSource('____JEST_COVERAGE_DATA____');
     }
 
     const lastExecutingModulePath = this._currentlyExecutingModulePath;
-    this._currentlyExecutingModulePath = modulePath;
-
+    this._currentlyExecutingModulePath = filename;
     const origCurrExecutingManualMock = this._isCurrentlyExecutingManualMock;
-    this._isCurrentlyExecutingManualMock = modulePath;
+    this._isCurrentlyExecutingManualMock = filename;
 
-    utils.runContentWithLocalBindings(
-      this._environment,
-      moduleContent,
-      modulePath,
-      moduleLocalBindings
+    // Every module receives a mock parent so they don't assume they are run
+    // standalone.
+    moduleObj.parent = mockParentModule;
+    moduleObj.require = this.constructBoundRequire(filename);
+
+    const evalResultVariable = 'Object.<anonymous>';
+    const wrapper = '({ "' + evalResultVariable + '": function(module, exports, require, __dirname, __filename, global, jest, ____JEST_COVERAGE_DATA____) {' + moduleContent + '\n}});';
+    const wrapperFunc = this._environment.runSourceText(wrapper, filename)[evalResultVariable];
+    wrapperFunc.call(
+      moduleObj.exports, // module context
+      moduleObj,
+      moduleObj.exports,
+      moduleObj.require,
+      path.dirname(filename),
+      filename,
+      this._environment.global,
+      this._createRuntimeFor(filename),
+      collectorStore
     );
 
     this._isCurrentlyExecutingManualMock = origCurrExecutingManualMock;
@@ -247,9 +247,11 @@ class Loader {
       this._mockRegistry = origMockRegistry;
       this._moduleRegistry = origModuleRegistry;
 
-      this._mockMetaDataCache[modulePath] = moduleMocker.getMetadata(
-        moduleExports
-      );
+      const mockMetadata = moduleMocker.getMetadata(moduleExports);
+      if (mockMetadata === null) {
+        throw new Error('Failed to get mock metadata: ' + modulePath);
+      }
+      this._mockMetaDataCache[modulePath] = mockMetadata;
     }
 
     return moduleMocker.generateFromMetadata(
@@ -519,6 +521,10 @@ class Loader {
     moduleRequire.requireMock = this.requireMock.bind(this, modulePath);
     moduleRequire.requireActual = this.requireModule.bind(this, modulePath);
 
+    // Compatibility with modules using enumerable keys of "require"
+    moduleRequire.cache = Object.create(null);
+    moduleRequire.extensions = Object.create(null);
+
     return moduleRequire;
   }
 
@@ -682,7 +688,7 @@ class Loader {
    * Given a module name, return the *real* (un-mocked) version of said
    * module.
    */
-  requireModule(currPath, moduleName, bypassRegistryCache) {
+  requireModule(currPath, moduleName) {
     const moduleID = this._getNormalizedModuleID(currPath, moduleName);
     let modulePath;
 
@@ -734,9 +740,7 @@ class Loader {
     }
 
     let moduleObj;
-    if (!bypassRegistryCache) {
-      moduleObj = this._moduleRegistry[modulePath];
-    }
+    moduleObj = this._moduleRegistry[modulePath];
     if (!moduleObj) {
       // We must register the pre-allocated module object first so that any
       // circular dependencies that may arise while evaluating the module can
@@ -746,10 +750,7 @@ class Loader {
         exports: {},
       };
 
-      if (!bypassRegistryCache) {
-        this._moduleRegistry[modulePath] = moduleObj;
-      }
-
+      this._moduleRegistry[modulePath] = moduleObj;
       if (path.extname(modulePath) === '.json') {
         moduleObj.exports = this._environment.global.JSON.parse(
           fs.readFileSync(modulePath, 'utf8')
@@ -789,10 +790,6 @@ class Loader {
     } else {
       return this.requireModule(currPath, moduleName);
     }
-  }
-
-  getJestRuntime(dir) {
-    return this._createRuntimeFor(dir);
   }
 
   _createRuntimeFor(currPath) {
@@ -847,23 +844,7 @@ class Loader {
       },
 
       resetModuleRegistry: () => {
-        var envGlobal = this._environment.global;
-        Object.keys(envGlobal).forEach(key => {
-          const globalMock = envGlobal[key];
-          if (
-            (typeof globalMock === 'object' && globalMock !== null) ||
-            typeof globalMock === 'function'
-          ) {
-            globalMock._isMockFunction && globalMock.mockClear();
-          }
-        });
-
-        if (envGlobal.mockClearTimers) {
-          envGlobal.mockClearTimers();
-        }
-
         this.resetModuleRegistry();
-
         return runtime;
       },
 
@@ -889,6 +870,27 @@ class Loader {
   resetModuleRegistry() {
     this._mockRegistry = {};
     this._moduleRegistry = {};
+
+    if (this._environment && this._environment.global) {
+      var envGlobal = this._environment.global;
+      Object.keys(envGlobal).forEach(key => {
+        const globalMock = envGlobal[key];
+        if (
+          (typeof globalMock === 'object' && globalMock !== null) ||
+          typeof globalMock === 'function'
+        ) {
+          globalMock._isMockFunction && globalMock.mockClear();
+        }
+      });
+
+      if (envGlobal.mockClearTimers) {
+        envGlobal.mockClearTimers();
+      }
+    }
+  }
+
+  __getJestRuntimeForTest(dir) {
+    return this._createRuntimeFor(dir);
   }
 }
 

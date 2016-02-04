@@ -5,10 +5,9 @@
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  */
+
 'use strict';
 
-module.exports = function done(err) {
-  setTimeout(function() {
-    throw err;
-  }, 0);
+module.exports = function sum() {
+  throw new Error('throwing fn');
 };

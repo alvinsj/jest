@@ -4,6 +4,8 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @emails oncall+jsinfra
  */
 'use strict';
 
@@ -12,14 +14,14 @@ jest.autoMockOff();
 describe('JasmineReporter', function() {
   // modules
   var JasmineReporter;
-  var colors;
+  var chalk;
 
   // other variables
   var reporter;
 
   beforeEach(function() {
     JasmineReporter = require('../JasmineReporter');
-    colors = require('../../lib/colors');
+    chalk = require('chalk');
 
     reporter = new JasmineReporter();
   });
@@ -55,6 +57,8 @@ describe('JasmineReporter', function() {
       return getRunner({
         actual: actualResult,
         expected: expectedResult,
+        message: '',
+        isNot: false,
         matcherName: 'toBe',
         passed: function() { return passed; },
         trace: {},
@@ -73,11 +77,11 @@ describe('JasmineReporter', function() {
     }
 
     function errorize(str) {
-      return colors.RED + colors.BOLD + colors.UNDERLINE + str + colors.RESET;
+      return chalk.bold.underline.red(str);
     }
 
     function highlight(str) {
-      return colors.RED_BG + str + colors.RESET;
+      return chalk.bgRed(str);
     }
 
     pit('colorizes single-line failures using a per-char diff', function() {
