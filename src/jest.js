@@ -13,41 +13,41 @@ const path = require('path');
 const TestRunner = require('./TestRunner');
 const formatTestResults = require('./lib/formatTestResults');
 const utils = require('./lib/utils');
+const chalk = require('chalk');
+const sane = require('sane');
+const which = require('which');
 
-let _jestVersion = null;
+const DEFAULT_WATCH_EXTENSIONS = 'js';
+const WATCHER_DEBOUNCE = 200;
+const WATCHMAN_BIN = 'watchman';
+
+let jestVersion = null;
 function getVersion() {
-  if (_jestVersion === null) {
-    const pkgJsonPath = path.resolve(__dirname, '..', 'package.json');
-    _jestVersion = require(pkgJsonPath).version;
+  if (jestVersion === null) {
+    const packageJSON = path.resolve(__dirname, '..', 'package.json');
+    jestVersion = require(packageJSON).version;
   }
-  return _jestVersion;
+  return jestVersion;
 }
 
-function _findChangedFiles(dirPath) {
-  return new Promise(function(resolve, reject) {
-    const args =
-      ['diff', '--name-only', '--diff-filter=ACMR'];
+function findChangedFiles(dirPath) {
+  return new Promise((resolve, reject) => {
+    const args = ['diff', '--name-only', '--diff-filter=ACMR', '--relative'];
     const child = childProcess.spawn('git', args, {cwd: dirPath});
 
     let stdout = '';
-    child.stdout.on('data', function(data) {
-      stdout += data;
-    });
-
     let stderr = '';
-    child.stderr.on('data', function(data) {
-      stderr += data;
-    });
-
-    child.on('close', function(code) {
+    child.stdout.on('data', data => stdout += data);
+    child.stderr.on('data', data => stderr += data);
+    child.on('close', code => {
       if (code === 0) {
         stdout = stdout.trim();
         if (stdout === '') {
           resolve([]);
         } else {
-          resolve(stdout.split('\n').map(function(changedPath) {
-            return path.resolve(dirPath, changedPath);
-          }));
+          resolve(stdout.split('\n').map(
+            changedPath => path.resolve(dirPath, changedPath)
+          ));
         }
       } else {
         reject(code + ': ' + stderr);
@@ -56,17 +56,17 @@ function _findChangedFiles(dirPath) {
   });
 }
 
-function _verifyIsGitRepository(dirPath) {
-  return new Promise(function(resolve) {
+function verifyIsGitRepository(dirPath) {
+  return new Promise(resolve =>
     childProcess.spawn('git', ['rev-parse', '--git-dir'], {cwd: dirPath})
-      .on('close', function(code) {
+      .on('close', code => {
         const isGitRepo = code === 0;
         resolve(isGitRepo);
-      });
-  });
+      })
+  );
 }
 
-function _testRunnerOptions(argv) {
+function testRunnerOptions(argv) {
   const options = {};
   if (argv.runInBand) {
     options.runInBand = argv.runInBand;
@@ -77,8 +77,8 @@ function _testRunnerOptions(argv) {
   return options;
 }
 
-function _promiseConfig(argv, packageRoot) {
-  return _promiseRawConfig(argv, packageRoot).then(function(config) {
+function readConfig(argv, packageRoot) {
+  return readRawConfig(argv, packageRoot).then(config => {
     if (argv.coverage) {
       config.collectCoverage = true;
     }
@@ -109,6 +109,18 @@ function _promiseConfig(argv, packageRoot) {
       config.useStderr = true;
     }
 
+    if (argv.testRunner) {
+      try {
+        config.testRunner = require.resolve(
+          argv.testRunner.replace(/<rootDir>/g, config.rootDir)
+        );
+      } catch (e) {
+        throw new Error(
+          `jest: testRunner path "${argv.testRunner}" is not a valid path.`
+        );
+      }
+    }
+
     if (argv.logHeapUsage) {
       config.logHeapUsage = argv.logHeapUsage;
     }
@@ -119,7 +131,7 @@ function _promiseConfig(argv, packageRoot) {
   });
 }
 
-function _promiseRawConfig(argv, packageRoot) {
+function readRawConfig(argv, packageRoot) {
   if (typeof argv.config === 'string') {
     return utils.loadConfigFromFile(argv.config);
   }
@@ -152,11 +164,11 @@ function _promiseRawConfig(argv, packageRoot) {
   }));
 }
 
-function _promiseOnlyChangedTestPaths(testRunner, config) {
-  const testPathDirsAreGit = config.testPathDirs.map(_verifyIsGitRepository);
+function findOnlyChangedTestPaths(testRunner, config) {
+  const testPathDirsAreGit = config.testPathDirs.map(verifyIsGitRepository);
   return Promise.all(testPathDirsAreGit)
-    .then(function(results) {
-      if (!results.every(function(result) { return result; })) {
+    .then(results => {
+      if (!results.every(result => !!result)) {
         /* eslint-disable no-throw-literal */
         throw (
           'It appears that one of your testPathDirs does not exist ' +
@@ -165,24 +177,75 @@ function _promiseOnlyChangedTestPaths(testRunner, config) {
         );
         /* eslint-enable no-throw-literal */
       }
-      return Promise.all(config.testPathDirs.map(_findChangedFiles));
+      return Promise.all(config.testPathDirs.map(findChangedFiles));
     })
-    .then(function(changedPathSets) {
+    .then(changedPathSets => {
       // Collapse changed files from each of the testPathDirs into a single list
       // of changed file paths
       let changedPaths = [];
-      changedPathSets.forEach(function(pathSet) {
-        changedPaths = changedPaths.concat(pathSet);
-      });
+      changedPathSets.forEach(
+        pathSet => changedPaths = changedPaths.concat(pathSet)
+      );
       return testRunner.promiseTestPathsRelatedTo(changedPaths);
     });
 }
 
-function _promisePatternMatchingTestPaths(argv, testRunner) {
-  const pattern = argv.testPathPattern ||
-    ((argv._ && argv._.length) ? argv._.join('|') : '.*');
+function buildTestPathPatternInfo(argv) {
+  if (argv.testPathPattern) {
+    return {
+      input: argv.testPathPattern,
+      pattern: argv.testPathPattern,
+      shouldTreatInputAsPattern: true,
+    };
+  }
+  if (argv._ && argv._.length) {
+    return {
+      input: argv._.join(' '),
+      pattern: argv._.join('|'),
+      shouldTreatInputAsPattern: false,
+    };
+  }
+  return {
+    input: '',
+    pattern: '.*',
+    shouldTreatInputAsPattern: false,
+  };
+}
 
+function findMatchingTestPaths(pattern, testRunner) {
   return testRunner.promiseTestPathsMatching(new RegExp(pattern));
+}
+
+
+function getNoTestsFoundMessage(patternInfo) {
+  const pattern = patternInfo.pattern;
+  const input = patternInfo.input;
+  const shouldTreatInputAsPattern = patternInfo.shouldTreatInputAsPattern;
+
+  const formattedPattern = `/${pattern}/`;
+  const formattedInput = shouldTreatInputAsPattern ?
+    `/${input}/` :
+    `"${input}"`;
+
+  const message = `No tests found for ${formattedInput}.`;
+  return input === pattern ?
+    message :
+    `${message} Regex used while searching: ${formattedPattern}.`;
+}
+
+/**
+ * use watchman when possible
+ */
+function getWatcher(argv, packageRoot, callback) {
+  which(WATCHMAN_BIN, function(err, resolvedPath) {
+    const watchman = !err && resolvedPath;
+    const watchExtensions = argv.watchExtensions || DEFAULT_WATCH_EXTENSIONS;
+    const glob = watchExtensions.split(',').map(function(extension) {
+      return '**/*' + extension;
+    });
+    const watcher = sane(packageRoot, {glob, watchman});
+    callback(watcher);
+  });
 }
 
 function runCLI(argv, packageRoot, onComplete) {
@@ -195,29 +258,75 @@ function runCLI(argv, packageRoot, onComplete) {
   }
 
   const pipe = argv.json ? process.stderr : process.stdout;
-  pipe.write('Using Jest CLI v' + getVersion() + '\n');
 
-  _promiseConfig(argv, packageRoot).then(function(config) {
-    const testRunner = new TestRunner(config, _testRunnerOptions(argv));
-    const testPaths = argv.onlyChanged ?
-      _promiseOnlyChangedTestPaths(testRunner, config) :
-      _promisePatternMatchingTestPaths(argv, testRunner);
-    return testPaths.then(function(testPaths) {
-      return testRunner.runTests(testPaths);
+  function _runCLI(filePath) {
+    readConfig(argv, packageRoot)
+      .then(config => {
+        // Disable colorization
+        if (config.noHighlight) {
+          chalk.enabled = false;
+        }
+
+        const testRunner = new TestRunner(config, testRunnerOptions(argv));
+        const testFramework = require(config.testRunner);
+        pipe.write(`Using Jest CLI v${getVersion()}, ${testFramework.name}\n`);
+
+        let testPaths;
+        if (argv.onlyChanged) {
+          testPaths = findOnlyChangedTestPaths(testRunner, config);
+        } else {
+          const patternInfo = buildTestPathPatternInfo(argv);
+          testPaths = findMatchingTestPaths(patternInfo.pattern, testRunner)
+            .then(testPaths => {
+              if (!testPaths.length) {
+                pipe.write(`${getNoTestsFoundMessage(patternInfo)}\n`);
+              }
+              return testPaths;
+            });
+        }
+
+        return testPaths.then(testPaths => {
+          const shouldTest = !filePath || testPaths.some(testPath => {
+            return testPath.indexOf(filePath) !== -1;
+          });
+          const tests = shouldTest ? testPaths : [];
+          return testRunner.runTests(tests);
+        });
+      })
+      .then(runResults => {
+        if (argv.json) {
+          process.stdout.write(JSON.stringify(formatTestResults(runResults)));
+        }
+        return runResults;
+      })
+      .then(runResults => onComplete && onComplete(runResults.success))
+      .catch(error => {
+        console.error('Failed with unexpected error.');
+        process.nextTick(() => {
+          throw error;
+        });
+      });
+  }
+
+  if (argv.watch !== undefined) {
+    getWatcher(argv, packageRoot, watcher => {
+      let tid;
+      watcher.on('all', (_, filePath) => {
+        if (tid) {
+          clearTimeout(tid);
+          tid = null;
+        }
+        tid = setTimeout(() => {
+          _runCLI(filePath);
+        }, WATCHER_DEBOUNCE);
+      });
+      if (argv.watch !== 'skip') {
+        _runCLI();
+      }
     });
-  }).then(function(runResults) {
-    if (argv.json) {
-      process.stdout.write(JSON.stringify(formatTestResults(runResults)));
-    }
-    return runResults;
-  }).then(function(runResults) {
-    onComplete && onComplete(runResults.success);
-  }).catch(function(error) {
-    console.error('Failed with unexpected error.');
-    process.nextTick(function() {
-      throw error;
-    });
-  });
+  } else {
+    _runCLI();
+  }
 }
 
 exports.TestRunner = TestRunner;

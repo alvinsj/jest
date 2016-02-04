@@ -6,7 +6,7 @@
  * of patent rights can be found in the PATENTS file in the same directory.
  */
 
- /* eslint-disable fb-www/require-args */
+/* eslint-disable fb-www/require-args */
 'use strict';
 
 const fs = require('graceful-fs');
@@ -18,52 +18,27 @@ const os = require('os');
 const path = require('path');
 const resolve = require('resolve');
 const transform = require('../lib/transform');
-const utils = require('../lib/utils');
 
-const COVERAGE_STORAGE_VAR_NAME = '____JEST_COVERAGE_DATA____';
-const NODE_PATH = process.env.NODE_PATH;
+const NODE_PATH =
+  (process.env.NODE_PATH ? process.env.NODE_PATH.split(path.delimiter) : null);
 const IS_PATH_BASED_MODULE_NAME = /^(?:\.\.?\/|\/)/;
 const VENDOR_PATH = path.resolve(__dirname, '../../vendor');
-const NODE_CORE_MODULES = {
-  assert: true,
-  buffer: true,
-  child_process: true,
-  cluster: true,
-  console: true,
-  constants: true,
-  crypto: true,
-  dgram: true,
-  dns: true,
-  domain: true,
-  events: true,
-  freelist: true,
-  fs: true,
-  http: true,
-  https: true,
-  module: true,
-  net: true,
-  os: true,
-  path: true,
-  punycode: true,
-  querystring: true,
-  readline: true,
-  repl: true,
-  smalloc: true,
-  stream: true,
-  string_decoder: true,
-  sys: true,
-  timers: true,
-  tls: true,
-  tty: true,
-  url: true,
-  util: true,
-  vm: true,
-  zlib: true,
-};
 
 const mockParentModule = {
   id: 'mockParent',
   exports: {},
+};
+
+const isFile = file => {
+  let stat;
+  try {
+    stat = fs.statSync(file);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      return false;
+    }
+  }
+  return stat.isFile() || stat.isFIFO();
 };
 
 const hasOwnProperty = Object.prototype.hasOwnProperty;
@@ -119,6 +94,7 @@ class Loader {
     this._reverseDependencyMap = null;
     this._shouldAutoMock = true;
     this._configShouldMockModuleNames = {};
+    this._extensions = config.moduleFileExtensions.map(ext => '.' + ext);
 
     if (config.collectCoverage) {
       this._CoverageCollector = require(config.coverageCollector);
@@ -190,52 +166,54 @@ class Loader {
    * objects.
    */
   _execModule(moduleObj) {
-    const modulePath = moduleObj.__filename;
-    let moduleContent = transform(modulePath, this._config);
+    // If the environment was disposed, prevent this module from
+    // being executed.
+    if (!this._environment.global) {
+      return;
+    }
 
-    // Every module, if loaded for jest, should have a parent
-    // so they don't think they are run standalone
-    moduleObj.parent = mockParentModule;
-    moduleObj.require = this.constructBoundRequire(modulePath);
-
-    const moduleLocalBindings = {
-      module: moduleObj,
-      exports: moduleObj.exports,
-      require: moduleObj.require,
-      __dirname: path.dirname(modulePath),
-      __filename: modulePath,
-      global: this._environment.global,
-      jest: this._createRuntimeFor(modulePath),
-    };
-
+    const filename = moduleObj.__filename;
+    let moduleContent = transform(filename, this._config);
+    let collectorStore;
     const onlyCollectFrom = this._config.collectCoverageOnlyFrom;
     const shouldCollectCoverage =
-      this._config.collectCoverage === true && !onlyCollectFrom
-      || (onlyCollectFrom && onlyCollectFrom[modulePath] === true);
+      (this._config.collectCoverage === true && !onlyCollectFrom) ||
+      (onlyCollectFrom && onlyCollectFrom[filename] === true);
 
     if (shouldCollectCoverage) {
-      if (!hasOwnProperty.call(this._coverageCollectors, modulePath)) {
-        this._coverageCollectors[modulePath] =
-          new this._CoverageCollector(moduleContent, modulePath);
+      if (!hasOwnProperty.call(this._coverageCollectors, filename)) {
+        this._coverageCollectors[filename] =
+          new this._CoverageCollector(moduleContent, filename);
       }
-      const collector = this._coverageCollectors[modulePath];
-      moduleLocalBindings[COVERAGE_STORAGE_VAR_NAME] =
-        collector.getCoverageDataStore();
+      const collector = this._coverageCollectors[filename];
+      collectorStore = collector.getCoverageDataStore();
       moduleContent =
-        collector.getInstrumentedSource(COVERAGE_STORAGE_VAR_NAME);
+        collector.getInstrumentedSource('____JEST_COVERAGE_DATA____');
     }
 
     const lastExecutingModulePath = this._currentlyExecutingModulePath;
-    this._currentlyExecutingModulePath = modulePath;
-
+    this._currentlyExecutingModulePath = filename;
     const origCurrExecutingManualMock = this._isCurrentlyExecutingManualMock;
-    this._isCurrentlyExecutingManualMock = modulePath;
+    this._isCurrentlyExecutingManualMock = filename;
 
-    utils.runContentWithLocalBindings(
-      this._environment,
-      moduleContent,
-      modulePath,
-      moduleLocalBindings
+    // Every module receives a mock parent so they don't assume they are run
+    // standalone.
+    moduleObj.parent = mockParentModule;
+    moduleObj.require = this.constructBoundRequire(filename);
+
+    const evalResultVariable = 'Object.<anonymous>';
+    const wrapper = '({ "' + evalResultVariable + '": function(module, exports, require, __dirname, __filename, global, jest, ____JEST_COVERAGE_DATA____) {' + moduleContent + '\n}});';
+    const wrapperFunc = this._environment.runSourceText(wrapper, filename)[evalResultVariable];
+    wrapperFunc.call(
+      moduleObj.exports, // module context
+      moduleObj,
+      moduleObj.exports,
+      moduleObj.require,
+      path.dirname(filename),
+      filename,
+      this._environment.global,
+      this._createRuntimeFor(filename),
+      collectorStore
     );
 
     this._isCurrentlyExecutingManualMock = origCurrExecutingManualMock;
@@ -269,9 +247,11 @@ class Loader {
       this._mockRegistry = origMockRegistry;
       this._moduleRegistry = origModuleRegistry;
 
-      this._mockMetaDataCache[modulePath] = moduleMocker.getMetadata(
-        moduleExports
-      );
+      const mockMetadata = moduleMocker.getMetadata(moduleExports);
+      if (mockMetadata === null) {
+        throw new Error('Failed to get mock metadata: ' + modulePath);
+      }
+      this._mockMetaDataCache[modulePath] = mockMetadata;
     }
 
     return moduleMocker.generateFromMetadata(
@@ -335,7 +315,7 @@ class Loader {
     let mockAbsPath = null;
     let realAbsPath = null;
 
-    if (hasOwnProperty.call(NODE_CORE_MODULES, moduleName)) {
+    if (resolve.isCore(moduleName)) {
       moduleType = 'node';
       realAbsPath = moduleName;
     } else {
@@ -351,7 +331,7 @@ class Loader {
         const absolutePath = this._moduleNameToPath(currPath, moduleName);
         if (absolutePath === undefined) {
           throw new Error(
-            `Cannot find module '${moduleName}' from '${currPath}'`
+            `Cannot find module '${moduleName}' from '${currPath || '.'}'`
           );
         }
 
@@ -391,74 +371,20 @@ class Loader {
     return moduleID.split(path.delimiter)[1];
   }
 
-  /**
-   * Given a module name and the current file path, returns the normalized
-   * (absolute) module path for said module. Relative-path CommonJS require()s
-   * such as `require('./otherModule')` need to be looked up with context of
-   * the module that's calling require()
-   *
-   * Also contains special case logic for built-in modules, in which it just
-   * returns the module name.
-   */
+
   _moduleNameToPath(currPath, moduleName) {
-    // Relative-path CommonJS require()s such as `require('./otherModule')`
-    // need to be looked up with context of the module that's calling
-    // require().
-    if (IS_PATH_BASED_MODULE_NAME.test(moduleName)) {
-      // Normalize the relative path to an absolute path
-      const modulePath = path.resolve(currPath, '..', moduleName);
-      const extensions = this._config.moduleFileExtensions;
-
-      // http://nodejs.org/docs/v0.10.0/api/all.html#all_all_together
-      // LOAD_AS_FILE #1
-      if (fs.existsSync(modulePath) && fs.statSync(modulePath).isFile()) {
-        return modulePath;
-      }
-      // LOAD_AS_FILE #2+
-      for (let i = 0; i < extensions.length; i++) {
-        const fullPath = modulePath + '.' + extensions[i];
-        if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
-          return fullPath;
-        }
-      }
-      // LOAD_AS_DIRECTORY
-      if (fs.existsSync(modulePath) && fs.statSync(modulePath).isDirectory()) {
-        // LOAD_AS_DIRECTORY #1
-        const packagePath = path.join(modulePath, 'package.json');
-        if (fs.existsSync(packagePath)) {
-          const packageData = require(packagePath);
-          if (packageData.main) {
-            const mainPath = path.join(modulePath, packageData.main);
-            if (fs.existsSync(mainPath)) {
-              return mainPath;
-            }
-          }
-        }
-
-        // The required path is a valid directory, but there's no matching
-        // js file at the same path. So look in the directory for an
-        // index.js file.
-        const indexPath = path.join(modulePath, 'index');
-        for (let i = 0; i < extensions.length; i++) {
-          const fullPath = indexPath + '.' + extensions[i];
-          if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
-            return fullPath;
-          }
-        }
-      }
-    } else {
-      const resource = this._getResource('JS', moduleName);
-      if (!resource) {
-        return this._nodeModuleNameToPath(currPath, moduleName);
-      }
-      return resource.path;
+    const resource = this._getResource('JS', moduleName);
+    if (!resource) {
+      return this._nodeModuleNameToPath(currPath, moduleName);
     }
+    return resource.path;
   }
 
   _nodeModuleNameToPath(currPath, moduleName) {
     // Handle module names like require('jest/lib/util')
     let subModulePath = null;
     let moduleProjectPart = moduleName;
+    const basedir = path.dirname(currPath);
     if (/\//.test(moduleName)) {
       const projectPathParts = moduleName.split('/');
       moduleProjectPart = projectPathParts.shift();
@@ -466,28 +392,20 @@ class Loader {
     }
 
     let resolveError = null;
-    const exts = this._config.moduleFileExtensions.map(ext => '.' + ext);
     try {
-      if (NODE_PATH) {
-        return resolve.sync(moduleName, {
-          paths: NODE_PATH.split(path.delimiter),
-          basedir: path.dirname(currPath),
-          extensions: exts,
-        });
-      } else {
-        return resolve.sync(moduleName, {
-          basedir: path.dirname(currPath),
-          extensions: exts,
-        });
-      }
+      return resolve.sync(moduleName, {
+        basedir,
+        extensions: this._extensions,
+        isFile,
+        paths: NODE_PATH,
+        readFileSync: fs.readFileSync,
+      });
     } catch (e) {
-      // Facebook has clowny package.json resolution rules that don't apply to
-      // regular Node rules. Until we can make ModuleLoaders more pluggable
-      // (so that FB can have a custom ModuleLoader and all the normal people
-      // can have a normal ModuleLoader), we catch node-resolution exceptions
-      // and fall back to some custom resolution logic before throwing the
-      // error.
-      resolveError = e;
+      // resolve.sync uses the basedir instead of currPath and therefore
+      // doesn't throw an accurate error message.
+      resolveError = new Error(
+        `Cannot find module '${moduleName}' from '${currPath || '.'}'`
+      );
     }
 
     // Memoize the project name -> package.json resource lookup map
@@ -510,8 +428,7 @@ class Loader {
     // Make sure the resource path is above the currPath in the fs path
     // tree. If so, just use node's resolve
     const resourceDirname = path.dirname(resource.path);
-    const currFileDirname = path.dirname(currPath);
-    if (resourceDirname.indexOf(currFileDirname) > 0) {
+    if (resourceDirname.indexOf(basedir) > 0) {
       throw resolveError;
     }
 
@@ -534,7 +451,7 @@ class Loader {
     const moduleID = this._getNormalizedModuleID(currPath, moduleName);
     if (hasOwnProperty.call(this._explicitShouldMock, moduleID)) {
       return this._explicitShouldMock[moduleID];
-    } else if (NODE_CORE_MODULES[moduleName]) {
+    } else if (resolve.isCore(moduleName)) {
       return false;
     } else if (this._shouldAutoMock) {
       // See if the module is specified in the config as a module that should
@@ -593,21 +510,23 @@ class Loader {
   }
 
   constructBoundRequire(modulePath) {
-    const boundModuleRequire = this.requireModuleOrMock.bind(this, modulePath);
+    const moduleRequire = this.requireModuleOrMock.bind(this, modulePath);
 
-    boundModuleRequire.resolve = moduleName => {
+    moduleRequire.resolve = moduleName => {
       const ret = this._moduleNameToPath(modulePath, moduleName);
       if (!ret) {
         throw new Error(`Module(${moduleName}) not found!`);
       }
       return ret;
     };
-    boundModuleRequire.generateMock = this._generateMock.bind(this, modulePath);
-    boundModuleRequire.requireMock = this.requireMock.bind(this, modulePath);
-    boundModuleRequire.requireActual =
-      this.requireModule.bind(this, modulePath);
+    moduleRequire.requireMock = this.requireMock.bind(this, modulePath);
+    moduleRequire.requireActual = this.requireModule.bind(this, modulePath);
 
-    return boundModuleRequire;
+    // Compatibility with modules using enumerable keys of "require"
+    moduleRequire.cache = Object.create(null);
+    moduleRequire.extensions = Object.create(null);
+
+    return moduleRequire;
   }
 
   /**
@@ -655,8 +574,10 @@ class Loader {
       throw new Error(`Unknown modulePath: ${modulePath}`);
     }
 
-    if (resource.type === 'ProjectConfiguration'
-        || resource.type === 'Resource') {
+    if (
+      resource.type === 'ProjectConfiguration' ||
+      resource.type === 'Resource'
+    ) {
       throw new Error(
         `Could not extract dependency information from this type of file!`
       );
@@ -768,7 +689,7 @@ class Loader {
    * Given a module name, return the *real* (un-mocked) version of said
    * module.
    */
-  requireModule(currPath, moduleName, bypassRegistryCache) {
+  requireModule(currPath, moduleName) {
     const moduleID = this._getNormalizedModuleID(currPath, moduleName);
     let modulePath;
 
@@ -802,7 +723,7 @@ class Loader {
       modulePath = manualMockResource.path;
     }
 
-    if (NODE_CORE_MODULES[moduleName]) {
+    if (resolve.isCore(moduleName)) {
       return require(moduleName);
     }
 
@@ -820,9 +741,7 @@ class Loader {
     }
 
     let moduleObj;
-    if (!bypassRegistryCache) {
-      moduleObj = this._moduleRegistry[modulePath];
-    }
+    moduleObj = this._moduleRegistry[modulePath];
     if (!moduleObj) {
       // We must register the pre-allocated module object first so that any
       // circular dependencies that may arise while evaluating the module can
@@ -832,10 +751,7 @@ class Loader {
         exports: {},
       };
 
-      if (!bypassRegistryCache) {
-        this._moduleRegistry[modulePath] = moduleObj;
-      }
-
+      this._moduleRegistry[modulePath] = moduleObj;
       if (path.extname(modulePath) === '.json') {
         moduleObj.exports = this._environment.global.JSON.parse(
           fs.readFileSync(modulePath, 'utf8')
@@ -875,10 +791,6 @@ class Loader {
     } else {
       return this.requireModule(currPath, moduleName);
     }
-  }
-
-  getJestRuntime(dir) {
-    return this._createRuntimeFor(dir);
   }
 
   _createRuntimeFor(currPath) {
@@ -933,23 +845,7 @@ class Loader {
       },
 
       resetModuleRegistry: () => {
-        var envGlobal = this._environment.global;
-        Object.keys(envGlobal).forEach(key => {
-          const globalMock = envGlobal[key];
-          if (
-            (typeof globalMock === 'object' && globalMock !== null) ||
-            typeof globalMock === 'function'
-          ) {
-            globalMock._isMockFunction && globalMock.mockClear();
-          }
-        });
-
-        if (envGlobal.mockClearTimers) {
-          envGlobal.mockClearTimers();
-        }
-
         this.resetModuleRegistry();
-
         return runtime;
       },
 
@@ -975,6 +871,27 @@ class Loader {
   resetModuleRegistry() {
     this._mockRegistry = {};
     this._moduleRegistry = {};
+
+    if (this._environment && this._environment.global) {
+      var envGlobal = this._environment.global;
+      Object.keys(envGlobal).forEach(key => {
+        const globalMock = envGlobal[key];
+        if (
+          (typeof globalMock === 'object' && globalMock !== null) ||
+          typeof globalMock === 'function'
+        ) {
+          globalMock._isMockFunction && globalMock.mockClear();
+        }
+      });
+
+      if (envGlobal.mockClearTimers) {
+        envGlobal.mockClearTimers();
+      }
+    }
+  }
+
+  __getJestRuntimeForTest(dir) {
+    return this._createRuntimeFor(dir);
   }
 }
 

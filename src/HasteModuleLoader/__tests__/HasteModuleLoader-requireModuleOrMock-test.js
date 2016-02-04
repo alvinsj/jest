@@ -10,14 +10,14 @@
 'use strict';
 
 jest.autoMockOff();
-jest.mock('../../JSDomEnvironment');
+jest.mock('../../environments/JSDOMEnvironment');
 
 var path = require('path');
 var utils = require('../../lib/utils');
 
 describe('HasteModuleLoader', function() {
   var HasteModuleLoader;
-  var JSDomEnvironment;
+  var JSDOMEnvironment;
   var resourceMap;
 
   var CONFIG = utils.normalizeConfig({
@@ -37,7 +37,7 @@ describe('HasteModuleLoader', function() {
         return buildLoader();
       });
     } else {
-      var mockEnvironment = new JSDomEnvironment(CONFIG);
+      var mockEnvironment = new JSDOMEnvironment(CONFIG);
       return Promise.resolve(
         new HasteModuleLoader(CONFIG, mockEnvironment, resourceMap)
       );
@@ -46,7 +46,7 @@ describe('HasteModuleLoader', function() {
 
   beforeEach(function() {
     HasteModuleLoader = require('../HasteModuleLoader');
-    JSDomEnvironment = require('../../JSDomEnvironment');
+    JSDOMEnvironment = require('../../environments/JSDOMEnvironment');
   });
 
   describe('requireModuleOrMock', function() {
@@ -59,7 +59,7 @@ describe('HasteModuleLoader', function() {
 
     pit('doesnt mock modules when explicitly dontMock()ed', function() {
       return buildLoader().then(function(loader) {
-        loader.getJestRuntime().dontMock('RegularModule');
+        loader.__getJestRuntimeForTest().dontMock('RegularModule');
         var exports = loader.requireModuleOrMock(null, 'RegularModule');
         expect(exports.isRealModule).toBe(true);
       });
@@ -70,7 +70,7 @@ describe('HasteModuleLoader', function() {
       'denormalized module name',
       function() {
         return buildLoader().then(function(loader) {
-          loader.getJestRuntime(__filename)
+          loader.__getJestRuntimeForTest(__filename)
             .dontMock('./test_root/RegularModule');
           var exports = loader.requireModuleOrMock(__filename, 'RegularModule');
           expect(exports.isRealModule).toBe(true);
@@ -80,7 +80,7 @@ describe('HasteModuleLoader', function() {
 
     pit('doesnt mock modules when autoMockOff() has been called', function() {
       return buildLoader().then(function(loader) {
-        loader.getJestRuntime().autoMockOff();
+        loader.__getJestRuntimeForTest().autoMockOff();
         var exports = loader.requireModuleOrMock(null, 'RegularModule');
         expect(exports.isRealModule).toBe(true);
       });
@@ -98,7 +98,7 @@ describe('HasteModuleLoader', function() {
       'available',
       function() {
         return buildLoader().then(function(loader) {
-          loader.getJestRuntime(__filename).autoMockOff();
+          loader.__getJestRuntimeForTest().autoMockOff();
           var exports = loader.requireModuleOrMock(
             __filename,
             'ManuallyMocked'
@@ -110,7 +110,6 @@ describe('HasteModuleLoader', function() {
 
     pit('resolves mapped module names and unmocks them by default', function() {
       return buildLoader().then(function(loader) {
-        loader.getJestRuntime(__filename);
         var exports =
           loader.requireModuleOrMock(__filename, 'image!not-really-a-module');
         expect(exports.isGlobalImageStub).toBe(true);

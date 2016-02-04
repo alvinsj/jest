@@ -54,7 +54,8 @@ permalink: docs/api.html
   - [`config.testFileExtensions` [array<string>]](#config-testfileextensions-array-string)
   - [`config.testPathDirs` [array<string>]](#config-testpathdirs-array-string)
   - [`config.testPathIgnorePatterns` [array<string>]](#config-testpathignorepatterns-array-string)
-  - [`config.testPathPattern` [string]](http://facebook.github.io/jest/docs/api.html#config-testpathpattern-string)
+  - [`config.testPathPattern` [string]](#config-testpathpattern-string)
+  - [`config.testRunner` [string]](#config-testrunner-string)
   - [`config.unmockedModulePathPatterns` [array<string>]](#config-unmockedmodulepathpatterns-array-string)
   - [`config.verbose` [boolean]](#config-verbose-boolean)
 
@@ -139,14 +140,14 @@ Indicates that the module system should always return a mocked version of the sp
 This is normally useful under the circumstances where you have called [`jest.autoMockOff()`](#jest-automockoff), but still wish to specify that certain particular modules should be mocked by the module system.
 
 ### `jest.runAllTicks()`
-Exhausts the micro-task queue (usually interfaced in node via `process.nextTick`).
+Exhausts the **micro**-task queue (usually interfaced in node via `process.nextTick`).
 
 When this API is called, all pending micro-tasks that have been queued via `process.nextTick` will be executed. Additionally, if those micro-tasks themselves schedule new micro-tasks, those will be continually exhausted until there are no more micro-tasks remaining in the queue.
 
 This is often useful for synchronously executing all pending promises in the system.
 
 ### `jest.runAllTimers()`
-Exhausts the macro-task queue (i.e., all tasks queued by `setTimeout()` and `setInterval()`).
+Exhausts the **macro**-task queue (i.e., all tasks queued by `setTimeout()` and `setInterval()`).
 
 When this API is called, all pending "macro-tasks" that have been queued via `setTimeout()` or `setInterval()` will be executed. Additionally if those macro-tasks themselves schedule new macro-tasks, those will be continually exhausted until there are no more macro-tasks remaining in the queue.
 
@@ -317,7 +318,7 @@ For example, the following would create a global `__DEV__` variable set to `true
 Note that, if you specify a global reference value (like an object or array) here, and some code mutates that value in the midst of running a test, that mutation will *not* be persisted across test runs for other test files.
 
 ### `config.moduleFileExtensions` [array<string>]
-(default: `['js', 'json']`)
+(default: `['js', 'json', 'node']`)
 
 An array of file extensions your modules use. If you require modules without specifying a file extension, these are the extensions Jest will look for.
 
@@ -414,6 +415,11 @@ A regexp pattern string that is matched against all test paths before executing 
 
 This is useful if you need to override the default. If you are testing one file at a time the default will be set to `/.*/`, however if you pass a blob rather than a single file the default will then be the absolute path of each test file. The override may be needed on windows machines where, for example, the test full path would be `C:/myproject/__tests__/mystest.jsx.jest` and the default pattern would be set as `/C:\myproject\__tests__\mystest.jsx.jest/`.
 
+### `config.testRunner` [string]
+(default: `./testRunners/jasmine/jasmine1.js`)
+
+This option allows use of a custom test runner. The default is jasmine1. Jest also ships with jasmine2 to which it will default to in the future. jasmine2 can be enabled by setting this option to `<rootDir>/node_modules/jest-cli/src/testRunners/jasmine/jasmine2.js`.
+
 ### `config.unmockedModulePathPatterns` [array<string>]
 (default: `[]`)
 
@@ -422,6 +428,8 @@ An array of regexp pattern strings that are matched against all modules before t
 This is useful for some commonly used 'utility' modules that are almost always used as implementation details almost all the time (like underscore/lo-dash, etc). It's generally a best practice to keep this list as small as possible and always use explicit `jest.mock()`/`jest.dontMock()` calls in individual tests. Explicit per-test setup is far easier for other readers of the test to reason about the environment the test will run in.
 
 It is possible to override this setting in individual tests by explicitly calling `jest.mock()` at the top of the test file.
+
+**Note:** If you are using `npm 3.x`, you may need to specify modules that are not direct dependencies of your project in `config.unmockedModulePathPatterns` or prevent mocking using `jest.dontMock()`. This is a known limitation and will be addressed ([#554](https://github.com/facebook/jest/issues/554)).
 
 ### `config.verbose` [boolean]
 (default: `false`)

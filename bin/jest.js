@@ -12,10 +12,6 @@
 const fs = require('fs');
 const optimist = require('optimist');
 const path = require('path');
-const sane = require('sane');
-const which = require('which');
-
-const WATCHMAN_BIN = 'watchman';
 
 /**
  * Takes a description string, puts it on the next line, indents it, and makes
@@ -165,6 +161,14 @@ const argv = optimist
       ),
       type: 'boolean',
     },
+    testRunner: {
+      description: _wrapDesc(
+        'Allows to specify a custom test runner. Jest ships with jasmine2 ' +
+        'which can be enabled by setting this option to ' +
+        '`<rootDir>/node_modules/jest-cli/src/testRunners/jasmine/jasmine2.js`'
+      ),
+      type: 'string',
+    },
     logHeapUsage: {
       description: _wrapDesc(
         'Logs the heap usage after every test. Useful to debug memory ' +
@@ -279,40 +283,11 @@ function runJest() {
     }
   }
 
-  function runJestCLI() {
-    jest.runCLI(argv, cwdPackageRoot, function(success) {
-      process.on('exit', function() {
-        process.exit(success ? 0 : 1);
-      });
+  jest.runCLI(argv, cwdPackageRoot, function(success) {
+    process.on('exit', function() {
+      process.exit(success ? 0 : 1);
     });
-  }
-
-  /**
-   * use watchman when possible
-   */
-  function getWatcher(callback) {
-    which(WATCHMAN_BIN, function(err, resolvedPath) {
-      const watchman = !err && resolvedPath;
-      const watchExtensions = argv.watchExtensions || 'js';
-      const glob = watchExtensions.split(',').map(function(extension) {
-        return '**/*' + extension;
-      });
-      const watcher = sane(cwdPackageRoot, {glob, watchman});
-      callback(watcher);
-    });
-  }
-
-  if (argv.watch !== undefined) {
-    getWatcher(function(watcher) {
-      watcher.on('all', runJestCLI);
-      if (argv.watch !== 'skip') {
-        runJestCLI();
-      }
-    });
-  } else {
-    runJestCLI();
-  }
-
+  });
 }
 
 runJest();
