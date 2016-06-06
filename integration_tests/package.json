@@ -1,0 +1,11 @@
+{
+  "jest": {
+    "testEnvironment": "node",
+    "testPathIgnorePatterns": [
+      "<rootDir>/(?:.+?)/__tests__/"
+    ],
+    "unmockedModulePathPatterns": [
+      "<rootDir>/runJest.js$"
+    ]
+  }
+}

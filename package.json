@@ -1,68 +1,16 @@
 {
-  "name": "jest-cli",
-  "description": "Painless JavaScript Unit Testing.",
-  "version": "0.8.2",
-  "main": "src/jest.js",
-  "dependencies": {
-    "chalk": "^1.1.1",
-    "cover": "^0.2.9",
-    "diff": "^2.1.1",
-    "graceful-fs": "^4.1.2",
-    "istanbul": "^0.4.2",
-    "jsdom": "^7.2.0",
-    "json-stable-stringify": "^1.0.0",
-    "mkdirp": "^0.5.1",
-    "node-haste": "^1.2.8",
-    "object-assign": "^4.0.1",
-    "optimist": "^0.6.1",
-    "resolve": "^1.1.6",
-    "sane": "^1.2.0",
-    "which": "^1.1.1",
-    "worker-farm": "^1.3.1"
-  },
+  "private": true,
   "devDependencies": {
-    "babel-eslint": "^4.1.3",
-    "eslint": "^1.7.3",
-    "fbjs-scripts": "^0.5.0"
-  },
-  "bin": {
-    "jest": "./bin/jest.js"
-  },
-  "engines": {
-    "node": ">= 4"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/facebook/jest"
+    "babel-eslint": "^6.0.4",
+    "eslint": "^2.10.2",
+    "eslint-plugin-babel": "^3.2.0",
+    "fbjs-scripts": "^0.7.0",
+    "lerna": "2.0.0-beta.10",
+    "rimraf": "^2.4.4"
   },
   "scripts": {
     "lint": "eslint .",
-    "prepublish": "npm test",
-    "test": "npm run lint && npm run jasmine1 && npm run jasmine2",
-    "jasmine1": "node bin/jest.js --testRunner='<rootDir>/testRunners/jasmine/jasmine1.js'",
-    "jasmine2": "node bin/jest.js --testRunner='<rootDir>/testRunners/jasmine/jasmine2.js'"
-  },
-  "jest": {
-    "rootDir": "src",
-    "testPathIgnorePatterns": [
-      "/__tests__/[^/]*/.+"
-    ],
-    "testEnvironment_EXPERIMENTAL": "<rootDir>/environments/NodeEnvironment",
-    "globals": {
-      "CACHE_DIRECTORY": "<rootDir>/../.haste_cache"
-    }
-  },
-  "bugs": {
-    "url": "https://github.com/facebook/jest/issues"
-  },
-  "homepage": "http://facebook.github.io/jest/",
-  "keywords": [
-    "facebook",
-    "jest",
-    "test",
-    "unit",
-    "jasmine",
-    "mock"
-  ],
-  "license": "BSD-3-Clause"
+    "postinstall": "node postinstall.js",
+    "test": "npm run lint && node ./runTests.js"
+  }
 }

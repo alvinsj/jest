@@ -1,3 +1,5 @@
+// Copyright 2004-present Facebook. All Rights Reserved.
+
 const tsc = require('typescript');
 
 module.exports = {
@@ -7,12 +9,12 @@ module.exports = {
         src,
         {
           module: tsc.ModuleKind.CommonJS,
-          jsx: tsc.JsxEmit.React
+          jsx: tsc.JsxEmit.React,
         },
         path,
         []
       );
     }
     return src;
-  }
+  },
 };

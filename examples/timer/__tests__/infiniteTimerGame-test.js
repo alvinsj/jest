@@ -1,9 +1,13 @@
-jest.dontMock('../infiniteTimerGame');
+// Copyright 2004-present Facebook. All Rights Reserved.
 
-describe('infiniteTimerGame', function() {
-  it('schedules a 10-second timer after 1 second', function() {
-    var infiniteTimerGame = require('../infiniteTimerGame');
-    var callback = jest.genMockFunction();
+'use strict';
+
+jest.unmock('../infiniteTimerGame');
+
+describe('infiniteTimerGame', () => {
+  it('schedules a 10-second timer after 1 second', () => {
+    const infiniteTimerGame = require('../infiniteTimerGame');
+    const callback = jest.fn();
 
     infiniteTimerGame(callback);
 
@@ -25,4 +29,3 @@ describe('infiniteTimerGame', function() {
     expect(setTimeout.mock.calls[1][1]).toBe(10000);
   });
 });
-

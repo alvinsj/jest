@@ -1,0 +1,21 @@
+{
+  "name": "babel-plugin-jest-hoist",
+  "version": "12.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/facebook/jest.git"
+  },
+  "license": "BSD-3-Clause",
+  "main": "src/index.js",
+  "devDependencies": {
+    "babel-preset-es2015": "*",
+    "react": "^0.14.0"
+  },
+  "jest": {
+    "scriptPreprocessor": "../babel-jest",
+    "testEnvironment": "node"
+  },
+  "scripts": {
+    "test": "../../packages/jest-cli/bin/jest.js"
+  }
+}

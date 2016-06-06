@@ -1,14 +1,14 @@
-var fs = require('fs');
+// Copyright 2004-present Facebook. All Rights Reserved.
 
-function summarizeFilesInDirectorySync(directoryPath) {
-  return fs.readdirSync(directoryPath).map(function(fileName) {
-    return {
-      fileName: fileName,
-      directory: directoryPath
-    };
-  });
-  return directoryFileSummary;
+'use strict';
+
+const fs = require('fs');
+
+function summarizeFilesInDirectorySync(directory) {
+  return fs.readdirSync(directory).map(fileName => ({
+    fileName,
+    directory,
+  }));
 }
 
 exports.summarizeFilesInDirectorySync = summarizeFilesInDirectorySync;
-

@@ -4,7 +4,8 @@
     "react-dom": "~0.14.0"
   },
   "devDependencies": {
-    "babel-jest": "*",
+    "babel-jest": "^9.0.0",
+    "babel-polyfill": "*",
     "babel-preset-es2015": "*",
     "babel-preset-react": "*",
     "jest-cli": "*",
@@ -14,15 +15,10 @@
     "test": "jest"
   },
   "jest": {
-    "scriptPreprocessor": "<rootDir>/node_modules/babel-jest",
     "unmockedModulePathPatterns": [
-      "<rootDir>/node_modules/react",
-      "<rootDir>/node_modules/react-dom",
-      "<rootDir>/node_modules/react-addons-test-utils",
-      "<rootDir>/node_modules/fbjs"
-    ],
-    "modulePathIgnorePatterns": [
-      "<rootDir>/node_modules/"
+      "<rootDir>/node_modules/react/",
+      "<rootDir>/node_modules/react-dom/",
+      "<rootDir>/node_modules/react-addons-test-utils/"
     ]
   }
 }

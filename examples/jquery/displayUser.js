@@ -1,9 +1,11 @@
-var $ = require('jquery');
-var fetchCurrentUser = require('./fetchCurrentUser.js');
+// Copyright 2004-present Facebook. All Rights Reserved.
 
-$('#button').click(function() {
-  fetchCurrentUser(function(user) {
-    var loggedText = 'Logged ' + (user.loggedIn ? 'In' : 'Out');
+const $ = require('jquery');
+const fetchCurrentUser = require('./fetchCurrentUser.js');
+
+$('#button').click(() => {
+  fetchCurrentUser(user => {
+    const loggedText = 'Logged ' + (user.loggedIn ? 'In' : 'Out');
     $('#username').text(user.fullName + ' - ' + loggedText);
   });
 });

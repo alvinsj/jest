@@ -1,5 +1,115 @@
 ## master
 
+* Add support for property testing via testcheck-js.
+
+## jest-cli 12.1.1
+
+* Windows stability fixes.
+* Mock module resolution fixes.
+* Remove test files from code coverage.
+
+## jest-cli 12.1.0
+
+* Jest is now also published in the `jest` package on npm.
+* Added `testRegex` to match for tests outside of specific folders. Deprecated
+  both `testDirectoryName` and `testFileExtensions`.
+* `it` can now return a Promise for async testing. `pit` was deprecated.
+* Added `jest-resolve` as a standalone package based on the Facebook module
+  resolution algorithm.
+* Added `jest-changed-files` as a standalone package to detect changed files
+  in a git or hg repo.
+* Added `--setupTestFrameworkFile` to cli.
+* Added support for coverage thresholds. See http://facebook.github.io/jest/docs/api.html#coveragethreshold-object.
+* Updated to jsdom 9.0.
+* Updated and improved stack trace reporting.
+* Added `module.filename` and removed the invalid `module.__filename` field.
+* Further improved the `lastCalledWith` and `toBeCalledWith` custom matchers.
+  They now print the most recent calls.
+* Fixed jest-haste-map on continuous integration systems.
+* Fixes for hg/git integration.
+* Added a re-try for the watchman crawler.
+
+## jest-cli 12.0.2
+
+* Bug fixes when running a single test file and for scoped package names.
+
+## jest-cli 12.0.1
+
+* Added custom equality matchers for Map/Set and iterables.
+* Bug fixes
+
+## jest-cli 12.0.0
+
+* Reimplemented `node-haste` as `jest-haste-map`:
+  https://github.com/facebook/jest/pull/896
+* Fixes for the upcoming release of nodejs 6.
+* Removed global mock caching which caused negative side-effects on test runs.
+* Updated Jasmine from 2.3.4 to 2.4.1.
+* Fixed our Jasmine fork to work better with `Object.create(null)`.
+* Added a `--silent` flag to silence console messages during a test run.
+* Run a test file directly if a path is passed as an argument to Jest.
+* Added support for the undocumented nodejs feature `module.paths`.
+
+## jest-cli 11.0.2
+
+* Fixed `jest -o` error when Mercurial isn't installed on the system
+* Fixed Jasmine failure message when expected values were mutated after tests.
+
+## jest-cli 11.0.1, babel-jest 11.0.1
+
+* Added support for Mercurial repositories when using `jest -o`
+* Added `mockImplementationOnce` API to `jest.fn()`.
+
+## jest-cli 11.0.0, babel-jest 11.0.0 (pre-releases 0.9 to 0.10)
+
+* New implementation of node-haste and rewrite of internal module loading and
+  resolution. Fixed both startup and runtime performance.
+  [#599](https://github.com/facebook/jest/pull/599)
+* Jasmine 2 is now the default test runner. To keep using Jasmine 1, put
+  `testRunner: "jasmine1"` into your configuration.
+* Added `jest-util`, `jest-mock`, `jest-jasmine1`, `jest-jasmine2`,
+  `jest-environment-node`, `jest-environment-jsdom` packages.
+* Added `babel-jest-preset` and `babel-jest` as packages. `babel-jest` is now
+  being auto-detected.
+* Added `babel-plugin-jest-hoist` which hoists `jest.unmock`, `jest.mock` and
+  the new `jest.enableAutomock` and `jest.disableAutomock` API.
+* Improved `babel-jest` integration and `react-native` testing.
+* Improved code coverage reporting when using `babel-jest`.
+* Added the `jest.mock('moduleName', moduleFactory)` feature. `jest.mock` now
+  gets hoisted by default. `jest.doMock` was added to explicitly mock a module
+  without the hoisting feature of `babel-jest`.
+* Updated jsdom to 8.3.x.
+* Improved responsiveness of the system while using `--watch`.
+* Clear the terminal window when using `--watch`.
+* By default, `--watch` will now only runs tests related to changed files.
+  `--watch=all` can be used to run all tests on file system changes.
+* Debounce `--watch` re-runs to not trigger test runs during a
+  branch switch in version control.
+* Added `jest.fn()` and `jest.fn(implementation)` as convenient shorcuts for
+  `jest.genMockFunction()` and `jest.genMockFunction().mockImplementation()`.
+* Added an `automock` option to turn off automocking globally.
+* Added a "no tests found" message if no tests can be found.
+* Jest sets `process.NODE_ENV` to `test` unless otherwise specified.
+* Fixed `moduleNameMapper` config option when used with paths.
+* Fixed an error with Jasmine 2 and tests that `throw 'string errors'`.
+* Fixed issues with unmocking symlinked module names.
+* Fixed mocking of boolean values.
+* Fixed mocking of fields that start with an underscore ("private fields").
+* Fixed unmocking behavior with npm3.
+* Fixed and improved `--onlyChanged` option.
+* Fixed support for running Jest as a git submodule.
+* Improved verbose logger output
+* Fixed test runtime error reporting and stack traces.
+* Improved `toBeCalled` Jasmine 2 custom matcher messages.
+* Improved error reporting when a syntax error occurs.
+* Renamed HasteModuleLoader to Runtime.
+* Jest now properly reports pending tests disabled with `xit` and `xdescribe`.
+* Removed `preprocessCachingDisabled` config option.
+* Added a `testEnvironment` option to customize the sandbox environment.
+* Added support for `@scoped/name` npm packages.
+* Added an integration test runner for Jest that runs all tests for examples
+  and packages.
+
 ## 0.8.2
 
 * Performance improvements.

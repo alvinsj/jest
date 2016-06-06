@@ -1,9 +1,13 @@
-jest
-  .dontMock('../displayUser.js')
-  .dontMock('jquery');
+// Copyright 2004-present Facebook. All Rights Reserved.
 
-describe('displayUser', function() {
-  it('displays a user after a click', function() {
+'use strict';
+
+jest
+  .unmock('../displayUser.js')
+  .unmock('jquery');
+
+describe('displayUser', () => {
+  it('displays a user after a click', () => {
     // Set up our document body
     document.body.innerHTML =
       '<div>' +
@@ -11,16 +15,18 @@ describe('displayUser', function() {
       '  <button id="button" />' +
       '</div>';
 
-    var displayUser = require('../displayUser');
-    var $ = require('jquery');
-    var fetchCurrentUser = require('../fetchCurrentUser');
+    // This module has a side-effect
+    require('../displayUser');
+
+    const $ = require('jquery');
+    const fetchCurrentUser = require('../fetchCurrentUser');
 
     // Tell the fetchCurrentUser mock function to automatically invoke
     // its callback with some data
-    fetchCurrentUser.mockImplementation(function(cb) {
+    fetchCurrentUser.mockImplementation(cb =>  {
       cb({
         loggedIn: true,
-        fullName: 'Johnny Cash'
+        fullName: 'Johnny Cash',
       });
     });
 

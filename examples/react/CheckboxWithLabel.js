@@ -1,13 +1,14 @@
+// Copyright 2004-present Facebook. All Rights Reserved.
+
 import React from 'react';
 
-class CheckboxWithLabel extends React.Component {
+export default class CheckboxWithLabel extends React.Component {
 
   constructor(props) {
     super(props);
     this.state = {isChecked: false};
 
-    // since auto-binding is disabled for React's class model
-    // we can prebind methods here
+    // bind manually because React class components don't auto-bind
     // http://facebook.github.io/react/blog/2015/01/27/react-v0.13.0-beta-1.html#autobinding
     this.onChange = this.onChange.bind(this);
   }
@@ -29,5 +30,3 @@ class CheckboxWithLabel extends React.Component {
     );
   }
 }
-
-module.exports = CheckboxWithLabel;
